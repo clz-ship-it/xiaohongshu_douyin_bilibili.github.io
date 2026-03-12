@@ -1,0 +1,20 @@
+{
+    "name": "skill-xiaohongshu",
+    "version": "2.0.0",
+    "description": "小红书爆款内容拆解器 — 使用 undetected-chromedriver 模拟真实用户浏览，逐个点击搜索结果卡片提取详情页数据，抓取评论，生成爆款分析报告",
+    "keywords": [
+        "xiaohongshu",
+        "小红书",
+        "爆款分析",
+        "undetected-chromedriver",
+        "DOM提取",
+        "评论抓取",
+        "内容拆解",
+        "反爬绕过"
+    ],
+    "author": "离觞",
+    "license": "MIT",
+    "scripts": {
+        "run": "python scripts/run.py"
+    }
+}

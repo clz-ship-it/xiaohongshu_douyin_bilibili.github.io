@@ -1,0 +1,15 @@
+*/scripts/output/
+output/
+__pycache__/
+*.pyc
+*.pyo
+chrome_user_data/
+.env
+.venv/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.bak
+.cookie_cache/
+structure_history.json
