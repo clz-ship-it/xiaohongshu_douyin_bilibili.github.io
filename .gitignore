@@ -1,0 +1,26 @@
+# 运行时输出
+*/scripts/output/
+output/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 浏览器数据
+chrome_user_data/
+
+# 环境配置
+.env
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 备份文件
+*.bak
