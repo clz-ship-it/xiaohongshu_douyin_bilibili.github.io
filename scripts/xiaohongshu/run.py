@@ -42,28 +42,43 @@ from cookie_helper import get_cookie_or_login
 import random
 import re
 
-OUTPUT_DIR = Path(__file__).parent / "output" / ((KEYWORDS[0] if isinstance(KEYWORDS, list) else KEYWORDS) if not NOTE_URLS else "url_analysis")
-
-
-def run():
-    """小红书爆款拆解器主流程"""
-    # 兼容旧格式：如果 KEYWORDS 是字符串，自动转为列表
-    keywords_list = KEYWORDS if isinstance(KEYWORDS, list) else [KEYWORDS]
+def run(config=None):
+    """小红书爆款拆解器主流程，支持外部传参调用"""
+    # 从 config 中提取配置，如果没有传入 config 则使用全局变量
+    if config:
+        keywords = config.get("keywords", KEYWORDS)
+        note_urls = config.get("video_urls", NOTE_URLS)  # 统一用 video_urls 字段
+        max_notes = config.get("max_videos", MAX_NOTES)  # 统一用 max_videos 字段
+        max_comments = config.get("max_comments", MAX_COMMENTS)
+        search_per_keyword = config.get("search_per_keyword", SEARCH_PER_KEYWORD)
+        xhs_cookie = config.get("cookie", XHS_COOKIE)
+    else:
+        keywords = KEYWORDS
+        note_urls = NOTE_URLS
+        max_notes = MAX_NOTES
+        max_comments = MAX_COMMENTS
+        search_per_keyword = SEARCH_PER_KEYWORD
+        xhs_cookie = XHS_COOKIE
+    
+    keywords_list = keywords if isinstance(keywords, list) else [keywords]
+    
+    # 重新计算输出目录
+    output_dir = Path(__file__).parent / "output" / (keywords_list[0] if not note_urls else "url_analysis")
 
     print("=" * 70)
     print(f"  📕 小红书爆款拆解器")
     print(f"  关键词({len(keywords_list)}个): {keywords_list}")
-    print(f"  每词搜索: {SEARCH_PER_KEYWORD} | 去重后保留: Top {MAX_NOTES} | 每笔记评论数: {MAX_COMMENTS}")
+    print(f"  每词搜索: {search_per_keyword} | 去重后保留: Top {max_notes} | 每笔记评论数: {max_comments}")
     print("=" * 70)
 
     # Step 0: 获取 Cookie（优先配置区 → 缓存 → 弹出浏览器登录）
     print(f"\n[Step 0] 获取 Cookie...")
-    cookie_string = get_cookie_or_login("xiaohongshu", XHS_COOKIE)
+    cookie_string = get_cookie_or_login("xiaohongshu", xhs_cookie)
     if not cookie_string:
         print("\n  ✗ 错误：未能获取小红书 Cookie，无法继续")
         return
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # 创建共享浏览器实例（避免反复创建触发反爬）
     print(f"\n[Step 0.5] 初始化浏览器...")
@@ -71,18 +86,20 @@ def run():
     print(f"  ✓ 浏览器已就绪（全程复用同一实例）")
 
     try:
-        _run_with_driver(driver, keywords_list)
+        results_path = _run_with_driver(driver, keywords_list, note_urls, max_notes, max_comments, search_per_keyword, xhs_cookie, output_dir)
     finally:
         driver.quit()
         print(f"\n  ✓ 浏览器已关闭")
+    
+    return str(results_path)
 
-def _run_with_driver(driver, keywords_list):
+def _run_with_driver(driver, keywords_list, note_urls, max_notes, max_comments, search_per_keyword, xhs_cookie, output_dir):
     """使用共享浏览器执行采集流程"""
     # Step 1: 搜索或 URL 直接分析
-    if NOTE_URLS:
-        print(f"\n[Step 1] URL 直接分析模式: {len(NOTE_URLS)} 个笔记")
+    if note_urls:
+        print(f"\n[Step 1] URL 直接分析模式: {len(note_urls)} 个笔记")
         notes = []
-        for url in NOTE_URLS:
+        for url in note_urls:
             # 从 URL 中提取 note_id（匹配最后一段路径）
             note_id = re.search(r'/([^/]+)$', url)
             if note_id:
@@ -110,7 +127,7 @@ def _run_with_driver(driver, keywords_list):
         all_candidates = []
         for kw_idx, keyword in enumerate(keywords_list, 1):
             print(f"\n  [{kw_idx}/{len(keywords_list)}] 搜索关键词: {keyword}")
-            search_result = search(keyword, page_size=SEARCH_PER_KEYWORD, cookie_string=XHS_COOKIE, driver=driver)
+            search_result = search(keyword, page_size=search_per_keyword, cookie_string=xhs_cookie, driver=driver)
             keyword_notes = search_result.get("items", [])
             print(f"    ✓ 找到 {len(keyword_notes)} 条笔记")
             for note in keyword_notes:
@@ -134,7 +151,7 @@ def _run_with_driver(driver, keywords_list):
 
         # 按点赞数排序，取 Top N
         unique_notes.sort(key=lambda note: note.get("like_count", 0), reverse=True)
-        notes = unique_notes[:MAX_NOTES]
+        notes = unique_notes[:max_notes]
 
         if not notes:
             print("  ✗ 未找到笔记")
@@ -159,9 +176,9 @@ def _run_with_driver(driver, keywords_list):
     search_notes_map = {note.get("note_id", ""): note for note in notes}
 
     consecutive_failures = 0
-    for idx in range(1, MAX_NOTES + 1):
+    for idx in range(1, max_notes + 1):
         print(f"\n{'─' * 60}")
-        print(f"  [{idx}/{MAX_NOTES}] 查找并点击下一条笔记...")
+        print(f"  [{idx}/{max_notes}] 查找并点击下一条笔记...")
         print(f"{'─' * 60}")
 
         # 在搜索结果页找到下一个未处理的卡片并点击进入详情页
@@ -219,7 +236,7 @@ def _run_with_driver(driver, keywords_list):
         print(f"    [{content_type_label}] {title[:40]}")
         print(f"    ✓ {note_info['author']} | 👍{note_info['like_count']} ⭐{note_info['collect_count']} 💬{note_info['comment_count']}")
 
-        note_dir = OUTPUT_DIR / f"note_{idx}_{clicked_note_id}"
+        note_dir = output_dir / f"note_{idx}_{clicked_note_id}"
         note_dir.mkdir(parents=True, exist_ok=True)
 
         # 提取正文
@@ -242,13 +259,13 @@ def _run_with_driver(driver, keywords_list):
             video_src = extract_video_src_from_detail_page(driver)
             if video_src:
                 # Step 2: 下载视频
-                video_path = download_video_by_url(video_src, note_dir, cookie_string=XHS_COOKIE)
+                video_path = download_video_by_url(video_src, note_dir, cookie_string=xhs_cookie)
                 if video_path:
                     # Step 3: 尝试字幕检测（不下载视频，仅提取字幕）
                     print(f"    尝试提取字幕...")
                     subtitle_result = try_extract_subtitles(
                         note_url, note_dir,
-                        platform="xiaohongshu", cookie_string=XHS_COOKIE
+                        platform="xiaohongshu", cookie_string=xhs_cookie
                     )
                     if subtitle_result.get("success"):
                         transcript_text = subtitle_result.get("subtitle_text", "")
@@ -273,7 +290,7 @@ def _run_with_driver(driver, keywords_list):
 
         # 提取评论（当前已在详情页）
         print(f"  [3] 提取评论...")
-        comments = _extract_comments_from_detail_page(driver, MAX_COMMENTS)
+        comments = _extract_comments_from_detail_page(driver, max_comments)
         if comments:
             print(f"    ✓ 获取 {len(comments)} 条评论")
             for comment_idx, comment in enumerate(comments[:5], 1):
@@ -316,12 +333,12 @@ def _run_with_driver(driver, keywords_list):
         "total_notes": len(all_results),
         "video_count": video_count,
         "image_text_count": image_text_count,
-        "max_comments_per_note": MAX_COMMENTS,
+        "max_comments_per_note": max_comments,
         "generated_at": datetime.now().isoformat(),
         "notes": all_results,
     }
 
-    results_path = OUTPUT_DIR / "results.json"
+    results_path = output_dir / "results.json"
     with open(results_path, "w", encoding="utf-8") as output_file:
         json.dump(summary, output_file, ensure_ascii=False, indent=2)
 
@@ -342,6 +359,8 @@ def _run_with_driver(driver, keywords_list):
     if 'report_path' in locals():
         print(f"  分析报告: {report_path}")
     print(f"{'=' * 70}")
+
+    return results_path
 
 
 if __name__ == "__main__":

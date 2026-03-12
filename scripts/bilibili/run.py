@@ -31,29 +31,48 @@ VIDEO_URLS = []
 BILI_COOKIE = ""
 # ============================
 
-if __name__ == "__main__":
+def run(config=None):
+    """B站爬虫主流程，支持外部传参调用"""
+    # 从 config 或全局变量获取配置
+    if config:
+        keywords = config.get("keywords", KEYWORDS)
+        video_urls = config.get("video_urls", VIDEO_URLS)
+        max_videos = config.get("max_videos", MAX_VIDEOS)
+        max_comments = config.get("max_comments", MAX_COMMENTS)
+        max_pages = config.get("max_pages", MAX_PAGES)
+        search_per_keyword = config.get("search_per_keyword", SEARCH_PER_KEYWORD)
+        bili_cookie = config.get("cookie", BILI_COOKIE)
+    else:
+        keywords = KEYWORDS
+        video_urls = VIDEO_URLS
+        max_videos = MAX_VIDEOS
+        max_comments = MAX_COMMENTS
+        max_pages = MAX_PAGES
+        search_per_keyword = SEARCH_PER_KEYWORD
+        bili_cookie = BILI_COOKIE
+    
     total_start_time = time.time()
 
     # Step 0: 获取 Cookie（优先配置区 → 缓存 → 弹出浏览器登录）
     print(f"\n[Step 0] 获取 Cookie...")
-    BILI_COOKIE = get_cookie_or_login("bilibili", BILI_COOKIE)
+    bili_cookie = get_cookie_or_login("bilibili", bili_cookie)
 
     # 判断使用哪种模式
-    use_url_mode = bool(VIDEO_URLS)
+    use_url_mode = bool(video_urls)
 
     # 兼容旧格式：如果 KEYWORDS 是字符串，自动转为列表
-    keywords_list = KEYWORDS if isinstance(KEYWORDS, list) else [KEYWORDS]
+    keywords_list = keywords if isinstance(keywords, list) else [keywords]
 
     print(f"\n{'=' * 60}")
     if use_url_mode:
         print(f"  B站爬虫 - URL 直接分析 + 字幕提取 + 评论")
         print(f"  模式: URL 直接分析")
-        print(f"  视频数量: {len(VIDEO_URLS)} | 每个视频评论: {MAX_COMMENTS}")
+        print(f"  视频数量: {len(video_urls)} | 每个视频评论: {max_comments}")
     else:
         print(f"  B站爬虫 - 多关键词搜索 + 去重 + 字幕提取 + 评论")
         print(f"  关键词({len(keywords_list)}个): {keywords_list}")
-        print(f"  每词搜索: {SEARCH_PER_KEYWORD} | 去重后保留: Top {MAX_VIDEOS} | 每视频评论: {MAX_COMMENTS}")
-    print(f"  Cookie: {'已配置' if BILI_COOKIE else '未配置（无法获取AI字幕）'}")
+        print(f"  每词搜索: {search_per_keyword} | 去重后保留: Top {max_videos} | 每视频评论: {max_comments}")
+    print(f"  Cookie: {'已配置' if bili_cookie else '未配置（无法获取AI字幕）'}")
     print(f"{'=' * 60}")
     print()
 
@@ -65,7 +84,7 @@ if __name__ == "__main__":
         print("[Step 1] 从 URL 获取视频详情...")
         videos = []
 
-        for url_idx, url in enumerate(VIDEO_URLS, 1):
+        for url_idx, url in enumerate(video_urls, 1):
             # 从 URL 中提取 BV 号
             match = re.search(r'/video/(BV\w+)', url)
             if not match:
@@ -73,7 +92,7 @@ if __name__ == "__main__":
                 continue
 
             bvid = match.group(1)
-            print(f"  [{url_idx}/{len(VIDEO_URLS)}] 获取视频详情: {bvid}")
+            print(f"  [{url_idx}/{len(video_urls)}] 获取视频详情: {bvid}")
 
             # 获取视频详情
             video_detail = bilibili.get_video_detail(bvid)
@@ -105,7 +124,7 @@ if __name__ == "__main__":
 
         if not videos:
             print("  未成功获取任何视频详情。请检查 URL 是否正确。")
-            exit(0)
+            return None
 
     else:
         # 多关键词搜索模式：逐个关键词搜索 → 合并 → 按标题去重 → 按点赞取 Top N
@@ -115,7 +134,7 @@ if __name__ == "__main__":
             print(f"\n  [{kw_idx}/{len(keywords_list)}] 搜索关键词: {keyword}")
             search_result = bilibili.search(
                 keywords=keyword,
-                page_size=SEARCH_PER_KEYWORD,
+                page_size=search_per_keyword,
             )
             keyword_videos = search_result.get("items", [])
             print(f"    ✓ 找到 {len(keyword_videos)} 个视频")
@@ -140,7 +159,7 @@ if __name__ == "__main__":
 
         # 按点赞数排序，取 Top N
         unique_videos.sort(key=lambda video: video.get("like_count", 0), reverse=True)
-        videos = unique_videos[:MAX_VIDEOS]
+        videos = unique_videos[:max_videos]
 
         step1_elapsed = time.time() - step1_start
         print(f"\n  最终选取 Top {len(videos)} 视频 (耗时 {step1_elapsed:.1f}s):\n")
@@ -157,21 +176,21 @@ if __name__ == "__main__":
 
         if not videos:
             print("  未找到视频。请检查网络连接或更换关键词。")
-            exit(0)
+            return None
 
     # Step 2: 为每个视频提取字幕（使用 B站官方 API + Cookie）
     step2_start = time.time()
     subtitle_success_count = 0
     subtitle_fail_count = 0
-    print(f"\n[Step 2] 提取 {min(len(videos), MAX_VIDEOS)} 个视频的字幕...\n")
+    print(f"\n[Step 2] 提取 {min(len(videos), max_videos)} 个视频的字幕...\n")
 
     subtitle_results = {}
-    for idx, video in enumerate(videos[:MAX_VIDEOS], 1):
+    for idx, video in enumerate(videos[:max_videos], 1):
         bvid = video.get("bvid", "")
         title = video.get("title", "")[:50]
-        print(f"  [{idx}/{min(len(videos), MAX_VIDEOS)}] {title} ({bvid})")
+        print(f"  [{idx}/{min(len(videos), max_videos)}] {title} ({bvid})")
 
-        subtitle_result = bilibili.fetch_subtitles(bvid=bvid, cookie_string=BILI_COOKIE)
+        subtitle_result = bilibili.fetch_subtitles(bvid=bvid, cookie_string=bili_cookie)
 
         if subtitle_result.get("success"):
             subtitle_count = subtitle_result.get("subtitle_count", 0)
@@ -187,7 +206,7 @@ if __name__ == "__main__":
             subtitle_fail_count += 1
             subtitle_results[bvid] = subtitle_result
 
-        if idx < min(len(videos), MAX_VIDEOS):
+        if idx < min(len(videos), max_videos):
             time.sleep(0.5)
 
     step2_elapsed = time.time() - step2_start
@@ -195,30 +214,30 @@ if __name__ == "__main__":
 
     # Step 3: 为每个视频抓取评论（sort=2 按热度排序）
     step3_start = time.time()
-    print(f"\n[Step 3] 抓取 {min(len(videos), MAX_VIDEOS)} 个视频的评论...\n")
+    print(f"\n[Step 3] 抓取 {min(len(videos), max_videos)} 个视频的评论...\n")
     all_results = []
 
-    for idx, video in enumerate(videos[:MAX_VIDEOS], 1):
+    for idx, video in enumerate(videos[:max_videos], 1):
         bvid = video.get("bvid", "")
         aid = video.get("aid", 0)
         title = video.get("title", "")[:50]
         like_count = video.get("like_count", 0)
 
         print(f"  {'=' * 55}")
-        print(f"  [{idx}/{min(len(videos), MAX_VIDEOS)}] [{like_count} 赞] {title}")
+        print(f"  [{idx}/{min(len(videos), max_videos)}] [{like_count} 赞] {title}")
         print(f"  {'=' * 55}")
 
         comment_result = bilibili.fetch_comments_for_video(
             bvid=bvid,
             aid=int(aid) if aid else 0,
-            max_pages=MAX_PAGES,  # 抓取 MAX_PAGES 页评论
+            max_pages=max_pages,  # 抓取 max_pages 页评论
             sort=1,  # 1 = 按点赞数排序（sort=2 是热度模式，仅返回3条热评）
-            cookie_string=BILI_COOKIE,  # 传入 Cookie 才能获取更多评论
+            cookie_string=bili_cookie,  # 传入 Cookie 才能获取更多评论
         )
 
         all_comments = comment_result.get("comments", [])
         all_comments.sort(key=lambda comment: comment.get("like_count", 0), reverse=True)
-        comments = all_comments[:MAX_COMMENTS]
+        comments = all_comments[:max_comments]
 
         video_title = comment_result.get("video_title", title)
         print(f"  标题: {video_title}")
@@ -251,7 +270,7 @@ if __name__ == "__main__":
             "comment_count": len(comments),
         })
 
-        if idx < min(len(videos), MAX_VIDEOS):
+        if idx < min(len(videos), max_videos):
             print(f"\n  等待 2s 后继续下一个视频...")
             time.sleep(2)
 
@@ -303,3 +322,8 @@ if __name__ == "__main__":
     print(f"     Step 4 报告:   {step4_elapsed:.1f}s")
     print(f"     总耗时:        {total_elapsed:.1f}s")
     print(f"{'=' * 60}")
+
+    return output_path
+
+if __name__ == "__main__":
+    run()
