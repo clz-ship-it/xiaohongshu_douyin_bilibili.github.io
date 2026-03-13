@@ -134,8 +134,6 @@ def _login_and_extract_cookie(config: dict) -> str:
 
     chrome_options = uc.ChromeOptions()
     chrome_options.add_argument("--window-size=1280,900")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-gpu")
 
     driver = None
     try:
